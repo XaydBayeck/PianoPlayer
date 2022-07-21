@@ -128,8 +128,9 @@ fn main() {
             timer: Timer::from_seconds(2.5, false),
         })
         .insert_resource(RecordDuration::default())
-        .add_state(GameStates::Record)
+        .add_state(GameStates::FreePlaying)
         .add_startup_system(setup)
+        .add_system_set(SystemSet::on_update(GameStates::FreePlaying).with_system(play_note))
         .add_system_set(SystemSet::on_enter(GameStates::Record).with_system(record_start))
         .add_system_set(
             SystemSet::on_update(GameStates::Record)
@@ -185,6 +186,7 @@ impl From<Vec<(u8, f32, f32)>> for TestNotes {
 enum GameStates {
     Record,
     Playing,
+    FreePlaying,
 }
 
 // Components
@@ -239,18 +241,27 @@ fn setup(mut commands: Commands) {
 }
 
 fn state_switch(mut keys: ResMut<Input<KeyCode>>, mut state: ResMut<State<GameStates>>) {
-    if keys.just_pressed(KeyCode::Q) {
+    if keys.just_pressed(KeyCode::Tab) {
         match state.current() {
-            GameStates::Record => {
+            GameStates::FreePlaying => {
                 state.set(GameStates::Playing).unwrap();
                 info!("State Switch to `Playing`!")
             }
             GameStates::Playing => {
-                state.set(GameStates::Record).unwrap();
-                info!("State Switch to `Record`!")
+                state.set(GameStates::FreePlaying).unwrap();
+                info!("State Switch to `FreePlaying`!")
             }
+            _ => (),
         }
         keys.reset(KeyCode::Q);
+    } else if keys.just_pressed(KeyCode::Q) {
+        match state.current() {
+            GameStates::Record => {
+                state.pop().unwrap();
+                info!("Recording...")
+            }
+            _ => state.push(GameStates::Record).unwrap(),
+        }
     }
 }
 
