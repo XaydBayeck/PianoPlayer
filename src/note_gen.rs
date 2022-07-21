@@ -17,7 +17,7 @@ impl TchMusicGenerator {
     }
 
     // pub fn forward(&self, input: Tensor) -> Result<tch::Tensor, TchError> {
-    pub fn try_forward<const S: usize>(&self, input: &[Note; S]) -> Result<tch::IValue, TchError> {
+    pub fn try_forward(&self, input: &[Note]) -> Result<tch::IValue, TchError> {
         let input = Tensor::of_slice2(
             input
                 .iter()
@@ -33,7 +33,7 @@ impl TchMusicGenerator {
         self.model.forward_is(&[tch::IValue::Tensor(input.unsqueeze(0))])
     }
 
-    pub fn forward<const S: usize>(&self, input: &[Note; S]) -> Note {
+    pub fn forward(&self, input: &[Note]) -> Note {
         let (pitch, step, duration) = convert_iv_tuple(self.try_forward(input).unwrap()).unwrap();
         Note {
             pitch,

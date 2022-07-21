@@ -1,10 +1,11 @@
 mod midi;
 mod note_gen;
 
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 
 use bevy::{core::Stopwatch, prelude::*, sprite::Anchor};
 use midi::MidiConn;
+use note_gen::TchMusicGenerator;
 
 const FALL_VECTOR: f32 = 200.0;
 
@@ -28,7 +29,7 @@ const WIDTH: f32 = 800.0;
 const HEIGHT: f32 = 600.0;
 
 fn main() {
-    let mut test_notes = TestNotes::from(vec![
+    let test_notes = TestNotes::from(VecDeque::from([
         (87, 0., 0.5),
         (85, 0.5, 0.5),
         (87, 0.5, 0.5),
@@ -110,8 +111,9 @@ fn main() {
         (89, 1., 4.),
         (90, 2., 2.),
         (92, 2., 12.),
-    ]);
-    test_notes.0.reverse();
+    ]));
+
+    let model = TchMusicGenerator::load_model().unwrap();
 
     App::new()
         .add_plugins(DefaultPlugins)
@@ -125,6 +127,7 @@ fn main() {
         })
         .insert_resource(RecordNotes(vec![]))
         .insert_resource(test_notes)
+        .insert_resource(model)
         .insert_resource(PlaceTimer {
             timer: Timer::from_seconds(2.5, false),
         })
@@ -133,6 +136,7 @@ fn main() {
         .add_startup_system(setup)
         .add_system_set(SystemSet::on_update(GameStates::FreePlaying).with_system(play_note))
         .add_system_set(SystemSet::on_enter(GameStates::Record).with_system(record_start))
+        .add_system_set(SystemSet::on_exit(GameStates::Record).with_system(record_over))
         .add_system_set(
             SystemSet::on_update(GameStates::Record)
                 .with_system(record_tick)
@@ -141,6 +145,7 @@ fn main() {
         )
         .add_system_set(
             SystemSet::on_update(GameStates::Playing)
+                .with_system(model_gen_note.before(test_place_notes))
                 .with_system(test_place_notes)
                 .with_system(note_fall)
                 .with_system(detect_note),
@@ -165,10 +170,10 @@ struct PlaceTimer {
 }
 
 #[derive(Debug)]
-struct TestNotes(Vec<Note>);
+struct TestNotes(VecDeque<Note>);
 
-impl From<Vec<(u8, f32, f32)>> for TestNotes {
-    fn from(notes: Vec<(u8, f32, f32)>) -> Self {
+impl From<VecDeque<(u8, f32, f32)>> for TestNotes {
+    fn from(notes: VecDeque<(u8, f32, f32)>) -> Self {
         Self(
             notes
                 .into_iter()
@@ -191,7 +196,7 @@ enum GameStates {
 }
 
 // Components
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone, Copy)]
 struct Note {
     /// 音高
     pitch: u8,
@@ -340,11 +345,36 @@ fn record_note(
 }
 
 fn record_start(mut record: ResMut<RecordDuration>) {
+    if record.time.paused() {
+        record.time.unpause();
+    }
     record.time.reset();
 }
 
 fn record_tick(time: Res<Time>, mut record: ResMut<RecordDuration>) {
     record.time.tick(time.delta());
+}
+
+fn record_over(
+    mut record: ResMut<RecordDuration>,
+    mut record_note: ResMut<RecordNotes>,
+    mut test_notes: ResMut<TestNotes>,
+    modle: Res<TchMusicGenerator>,
+) {
+    record.time.pause();
+    test_notes.0.clear();
+    while let Some(note) = record_note.0.pop() {
+        test_notes.0.push_front(note);
+    }
+    let pred_note = modle.forward(test_notes.0.as_slices().0);
+    test_notes.0.push_back(pred_note);
+}
+
+fn model_gen_note(mut test_notes: ResMut<TestNotes>, modle: Res<TchMusicGenerator>) {
+    if test_notes.0.len() <= 20 {
+        let pred_note = modle.forward(&[*test_notes.0.back().unwrap()]);
+        test_notes.0.push_back(pred_note);
+    }
 }
 
 fn test_place_notes(
@@ -360,7 +390,7 @@ fn test_place_notes(
                 step,
                 duration,
             },
-        ) = test_notes.0.pop()
+        ) = test_notes.0.pop_front()
         {
             // info!("get note {:?}", &_n);
             place_timer
