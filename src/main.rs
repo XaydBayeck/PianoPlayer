@@ -1,4 +1,5 @@
 mod midi;
+mod note_gen;
 
 use std::time::Duration;
 
