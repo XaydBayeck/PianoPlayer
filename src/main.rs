@@ -134,6 +134,7 @@ fn main() {
         .insert_resource(RecordDuration::default())
         .add_state(GameStates::FreePlaying)
         .add_startup_system(setup)
+        .add_startup_system(setup_ui)
         .add_system_set(SystemSet::on_update(GameStates::FreePlaying).with_system(play_note))
         .add_system_set(SystemSet::on_enter(GameStates::Record).with_system(record_start))
         .add_system_set(SystemSet::on_exit(GameStates::Record).with_system(record_over))
@@ -151,6 +152,7 @@ fn main() {
                 .with_system(detect_note),
         )
         .add_system(state_switch)
+        .add_system(display_state)
         // .add_system(play_note)
         .run();
 }
@@ -197,7 +199,7 @@ enum GameStates {
 
 // Components
 #[derive(Component, Debug, Clone, Copy)]
-struct Note {
+pub struct Note {
     /// 音高
     pitch: u8,
     // velocity:
@@ -246,6 +248,45 @@ fn setup(mut commands: Commands) {
     }
 }
 
+#[derive(Component, Debug)]
+struct StateBoard;
+
+fn setup_ui(mut commands: Commands, asset_sever: Res<AssetServer>) {
+    let font = asset_sever.load("fonts/QuinzeNarrow.ttf");
+    let text_style = TextStyle {
+        font,
+        font_size: 60.0,
+        color: Color::BLACK,
+    };
+
+    commands
+        .spawn_bundle(Text2dBundle {
+            text: Text::with_section(
+                format!("Score:{:}", 0),
+                text_style,
+                TextAlignment {
+                    vertical: VerticalAlign::Center,
+                    horizontal: HorizontalAlign::Left,
+                },
+            ),
+            transform: Transform::from_xyz(50.0 - 400.0, 300.0 - 50.0, 2.0),
+            ..default()
+        })
+        .insert(StateBoard);
+}
+
+fn display_state(state: Res<State<GameStates>>, mut ui_texts: Query<&mut Text, With<StateBoard>>) {
+    for mut ui_text in ui_texts.iter_mut() {
+        if state.is_changed() {
+            ui_text.sections[0].value = String::from(match state.current() {
+                GameStates::Record => "Record",
+                GameStates::Playing => "Playing",
+                GameStates::FreePlaying => "FreePlaying",
+            });
+        }
+    }
+}
+
 fn state_switch(mut keys: ResMut<Input<KeyCode>>, mut state: ResMut<State<GameStates>>) {
     if keys.just_pressed(KeyCode::Tab) {
         match state.current() {
@@ -272,7 +313,7 @@ fn state_switch(mut keys: ResMut<Input<KeyCode>>, mut state: ResMut<State<GameSt
 }
 
 fn play_note(keys: Res<Input<KeyCode>>, mut piano_keys: Query<(&mut Transform, &PianoKey)>) {
-    let mut conn = MidiConn::new(2).unwrap();
+    let mut conn = MidiConn::new(1).unwrap();
     for (mut trans, &PianoKey { key, pitch }) in piano_keys.iter_mut() {
         let scale: &mut Vec3 = &mut trans.scale;
         let pitch = if keys.pressed(KeyCode::LAlt) {
@@ -297,8 +338,8 @@ fn detect_note(
     mut piano_keys: Query<(&mut Transform, &PianoKey, &mut PlayPitch), Without<Note>>,
     notes: Query<(&Transform, &Note), Without<PianoKey>>,
 ) {
-    let mut conn = MidiConn::new(2).unwrap();
-    for (mut trans, &PianoKey { key, pitch: _ }, mut p_pitch) in piano_keys.iter_mut() {
+    let mut conn = MidiConn::new(1).unwrap();
+    for (mut trans, &PianoKey { key, pitch }, mut p_pitch) in piano_keys.iter_mut() {
         let x_position = trans.translation.x;
         let scale: &mut Vec3 = &mut trans.scale;
 
@@ -308,6 +349,7 @@ fn detect_note(
                     && n_trans.translation.x == x_position
                 {
                     p_pitch.0 = note.pitch;
+                    info!("p_pitch has change to {:?}", p_pitch.0);
                     break;
                 }
             }
@@ -316,6 +358,8 @@ fn detect_note(
         } else if keys.just_released(key) {
             *scale /= 0.8;
             conn.play_off(p_pitch.0).unwrap();
+            p_pitch.0 = pitch;
+            info!("p_pitch has change back to {:?}", p_pitch.0);
         }
     }
 }
@@ -362,7 +406,9 @@ fn record_over(
     modle: Res<TchMusicGenerator>,
 ) {
     record.time.pause();
-    test_notes.0.clear();
+    // if !record_note.0.is_empty() {
+    //     test_notes.0.clear();
+    // }
     while let Some(note) = record_note.0.pop() {
         test_notes.0.push_front(note);
     }
@@ -371,8 +417,8 @@ fn record_over(
 }
 
 fn model_gen_note(mut test_notes: ResMut<TestNotes>, modle: Res<TchMusicGenerator>) {
-    if test_notes.0.len() <= 20 {
-        let pred_note = modle.forward(&[*test_notes.0.back().unwrap()]);
+    if test_notes.0.len() <= 50 {
+        let pred_note = modle.forward(test_notes.0.as_slices().0);
         test_notes.0.push_back(pred_note);
     }
 }
