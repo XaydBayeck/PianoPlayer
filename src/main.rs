@@ -647,21 +647,22 @@ fn reduce_octave(pitch: u8) -> u8 {
 /// parameters:
 ///     - commands: 控制世界行为的特殊输入
 ///     - time: 系统时间资源
-///     - notes: 查询具有`Note`和`Transform`组件的实体的实体ID和`Transform`组件可变引用
+///     - notes: 查询具有`Note`和`Transform`组件的实体的实体ID和部分组件可变引用
 fn note_fall(
     mut commands: Commands,
     time: Res<Time>,
-    mut notes: Query<(Entity, &mut Transform), With<Note>>,
+    mut notes: Query<(Entity, &mut Transform, &Note)>,
 ) {
     // 对满足条件的实体的组件进行处理
-    for (entity, mut trans) in notes.iter_mut() {
+    for (entity, mut trans, note) in notes.iter_mut() {
         // 按照设定的速度减少纵坐标
         let pos: &mut Vec3 = &mut trans.translation;
         pos.y -= FALL_VECTOR * time.delta_seconds();
         
+        let tail_y = pos.y + note.duration * FALL_VECTOR;
         // TODO 更改为音符尾纵坐标低于琴键头部纵坐标
         // 检查音符是否掉落到窗口外
-        if pos.y < -HEIGHT / 2.0 {
+        if tail_y < -HEIGHT / 2.0 + 100.0 {
             // 删除音符实体
             commands.entity(entity).despawn()
         }
