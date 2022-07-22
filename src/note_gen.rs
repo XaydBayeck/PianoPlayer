@@ -1,6 +1,6 @@
-use std::{borrow::Borrow, path::Path};
+use std::path::Path;
 
-use tch::{nn::Module, CModule, TchError, Tensor};
+use tch::{CModule, TchError, Tensor};
 
 use crate::Note;
 
@@ -26,11 +26,9 @@ impl TchMusicGenerator {
                 .collect::<Vec<_>>()
                 .as_slice(),
         );
-        println!(
-            "input size is {:?}",
-            &input.unsqueeze(0).size()
-        );
-        self.model.forward_is(&[tch::IValue::Tensor(input.unsqueeze(0))])
+        println!("input size is {:?}", &input.unsqueeze(0).size());
+        self.model
+            .forward_is(&[tch::IValue::Tensor(input.unsqueeze(0))])
     }
 
     pub fn forward(&self, input: &[Note]) -> Note {
@@ -130,10 +128,7 @@ mod test {
             [0.5391, 0.5000, 0.4740],
             [0.3750, 0.5000, 0.9490],
         ]);
-        println!(
-            "input size is {:?}",
-            &input.unsqueeze(0).size()
-        );
+        println!("input size is {:?}", &input.unsqueeze(0).size());
         // gen.forward(input.unsqueeze(1)).unwrap().print();
         let out = gen
             .model
